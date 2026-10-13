@@ -53,6 +53,12 @@
   </div>
 </section>
 <script>
+// Solo IP local y funnel (simple, sin dependencias externas)
+const BACKENDS = [
+  "http://192.168.31.16:8901",
+  "https://jhon-pc.tailc7b9f2.ts.net"
+];
+let backend = null;
 const video = document.getElementById('player');
 const status = document.getElementById('status');
 const block = document.getElementById('playerBlock');
@@ -62,46 +68,65 @@ function initials(name) {
   return name.split(/\s+/).map(w => w[0]).join('').substring(0, 3).toUpperCase();
 }
 
+async function findBackend() {
+  for (const b of BACKENDS) {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 4000);
+      const r = await fetch(b + "/index.php?api=videos", {signal: c.signal});
+      clearTimeout(t);
+      if (r.ok) return b;
+    } catch(e) {}
+  }
+  return null;
+}
+
 async function load() {
   const wrap = document.getElementById('channels');
+  wrap.innerHTML = '<div class="empty">Buscando servidor...</div>';
+  backend = await findBackend();
+  if (!backend) {
+    wrap.innerHTML = '<div class="err">No se pudo conectar (prueba en wifi o revisa que la PC esté encendida).</div>';
+    return;
+  }
   try {
-    // Lee el .otc generado por el Action (mismo origen, sin CORS)
-    const r = await fetch('./beisbol.otc?t=' + Date.now());
+    const r = await fetch(backend + "/index.php?api=videos");
     const d = await r.json();
+    const live = d.live || [];
     wrap.innerHTML = '';
-    const chs = d.channels || [];
-    if (!chs.length) {
+    if (!live.length) {
       wrap.innerHTML = '<div class="empty">Sin transmisiones en vivo por ahora.</div>';
       return;
     }
-    chs.forEach(c => {
+    live.forEach(v => {
       const el = document.createElement('button');
       el.className = 'item-channel';
-      const logo = c.icon
-        ? `<img src="${c.icon}" loading="lazy" alt="">`
-        : `<span class="no-logo">${initials(c.name)}</span>`;
-      el.innerHTML = `${logo}<strong>${c.name}</strong><span class="onair"><span class="live-dot"></span>AL AIRE</span>`;
-      el.onclick = () => play(c, el);
+      const logo = (v.logo || v.thumbnail)
+        ? `<img src="${v.logo || v.thumbnail}" loading="lazy" alt="">`
+        : `<span class="no-logo">${initials(v.title)}</span>`;
+      el.innerHTML = `${logo}<strong>${v.title}</strong><span class="onair"><span class="live-dot"></span>AL AIRE</span>`;
+      el.onclick = () => play(v, el);
       wrap.appendChild(el);
     });
   } catch(e) {
-    wrap.innerHTML = '<div class="err">No se pudo cargar la lista. Intenta recargar.</div>';
+    wrap.innerHTML = '<div class="err">Error cargando la lista.</div>';
   }
 }
 
-function play(c, el) {
+function play(v, el) {
   document.querySelectorAll('.item-channel').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
   block.classList.add('show');
-  status.textContent = 'Reproduciendo: ' + c.name;
+  status.textContent = 'Reproduciendo: ' + v.title + ' (' + (backend.includes('192.168') ? 'local' : 'funnel') + ')';
   block.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  const url = backend + "/proxy.php?m3u8=" + encodeURIComponent(v.id);
   if (hls) hls.destroy();
   if (Hls.isSupported()) {
     hls = new Hls();
-    hls.loadSource(c.url);
+    hls.loadSource(url);
     hls.attachMedia(video);
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = c.url;
+    video.src = url;
   }
   video.play().catch(()=>{});
 }
