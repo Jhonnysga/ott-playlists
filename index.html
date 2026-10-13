@@ -28,8 +28,8 @@
   .item-channel .onair { margin-top: 8px; font-size: 11px; letter-spacing: 2px; color: #ff5b6e; font-weight: 700; display: flex; align-items: center; gap: 6px; }
   #playerBlock { margin-top: 36px; display: none; }
   #playerBlock.show { display: block; }
-  #playerWrap { background: #000; border-radius: 10px; overflow: hidden; max-width: 960px; aspect-ratio: 16/9; }
-  #playerWrap iframe { width: 100%; height: 100%; border: 0; }
+  #playerWrap { background: #000; border-radius: 10px; overflow: hidden; max-width: 960px; aspect-ratio: 16/9; position: relative; }
+  #dmplayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
   #status { font-size: 13px; color: rgba(255,255,255,.65); margin: 10px 0 0; }
   .empty, .err { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 26px; text-align: center; color: rgba(255,255,255,.75); max-width: 640px; }
 </style>
@@ -51,7 +51,6 @@
     </div>
   </div>
 </section>
-<script src="https://geo.dailymotion.com/libs/player/xaetl.js"></script>
 <script>
 // 100% independiente: API pública de Dailymotion + reproductor oficial embebido
 // No usa tu PC, no usa proxy, no usa funnel.
@@ -95,14 +94,13 @@ function play(v, el) {
   document.querySelectorAll('.item-channel').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
   block.classList.add('show');
-  status.textContent = 'Reproduciendo: ' + v.title;
+  status.innerHTML = 'Reproduciendo: ' + v.title +
+    ` <a href="https://www.dailymotion.com/video/${v.id}" target="_blank" style="color:#ff5b6e">Abrir en Dailymotion ↗</a>`;
   block.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-  // Reproductor oficial de Dailymotion (maneja su propia sesión)
-  document.getElementById('dmplayer').innerHTML = '';
-  player = dailymotion.createPlayer('dmplayer', {
-    video: v.id,
-    params: { autoplay: true }
-  });
+  // Iframe directo al player de Dailymotion (sin JS API, más compatible)
+  document.getElementById('dmplayer').innerHTML =
+    `<iframe src="https://geo.dailymotion.com/player.html?video=${v.id}&autoplay=1" ` +
+    `allowfullscreen allow="autoplay; fullscreen" style="width:100%;height:100%;border:0;position:absolute;top:0;left:0"></iframe>`;
 }
 load();
 </script>
