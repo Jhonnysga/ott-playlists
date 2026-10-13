@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BéisbolPlay en Vivo</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, sans-serif; background: #0f0f0f; color: #fff; }
+  header { padding: 16px; text-align: center; background: #1a1a1a; }
+  header h1 { font-size: 1.4em; }
+  #status { font-size: 0.8em; color: #888; margin-top: 4px; }
+  #player-wrap { max-width: 900px; margin: 0 auto; padding: 12px; }
+  video { width: 100%; background: #000; border-radius: 8px; }
+  #channels { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; padding: 12px; max-width: 900px; margin: 0 auto; }
+  .ch { background: #1a1a1a; border-radius: 8px; overflow: hidden; cursor: pointer; }
+  .ch img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+  .ch .t { padding: 8px; font-size: 0.85em; }
+  .ch.active { outline: 2px solid #2b8cff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BéisbolPlay en Vivo</h1>
+  <div id="status">Conectando...</div>
+</header>
+<div id="player-wrap"><video id="player" controls playsinline></video></div>
+<div id="channels"></div>
+<script>
+const BACKENDS = [
+  "http://192.168.31.16:8901",
+  "https://jhon-pc.tailc7b9f2.ts.net"
+];
+let backend = null;
+const status = document.getElementById('status');
+const video = document.getElementById('player');
+let hls = null;
+
+async function findBackend() {
+  for (const b of BACKENDS) {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 3000);
+      const r = await fetch(b + "/index.php?api=videos", {signal: c.signal});
+      clearTimeout(t);
+      if (r.ok) { backend = b; return b; }
+    } catch(e) {}
+  }
+  return null;
+}
+
+async function load() {
+  const b = await findBackend();
+  if (!b) { status.textContent = "Sin conexión al servidor"; return; }
+  status.textContent = "Conectado: " + (b.includes("192.168") ? "red local" : "remoto");
+  const r = await fetch(b + "/index.php?api=videos");
+  const d = await r.json();
+  const wrap = document.getElementById('channels');
+  wrap.innerHTML = "";
+  (d.live || []).forEach(v => {
+    const el = document.createElement('div');
+    el.className = 'ch';
+    el.innerHTML = `<img src="${v.thumbnail || v.logo || ''}" loading="lazy"><div class="t">${v.title}</div>`;
+    el.onclick = () => play(v, el);
+    wrap.appendChild(el);
+  });
+  if ((d.live || []).length === 0) status.textContent += " — sin transmisiones en vivo";
+}
+
+function play(v, el) {
+  document.querySelectorAll('.ch').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  const url = backend + "/proxy.php?m3u8=" + encodeURIComponent(v.id);
+  if (hls) hls.destroy();
+  if (Hls.isSupported()) {
+    hls = new Hls();
+    hls.loadSource(url);
+    hls.attachMedia(video);
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+  }
+  video.play().catch(()=>{});
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
