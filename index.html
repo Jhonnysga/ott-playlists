@@ -7,83 +7,105 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, sans-serif; background: #0f0f0f; color: #fff; }
-  header { padding: 16px; text-align: center; background: #1a1a1a; }
-  header h1 { font-size: 1.4em; }
-  #status { font-size: 0.8em; color: #888; margin-top: 4px; }
-  #player-wrap { max-width: 900px; margin: 0 auto; padding: 12px; }
-  video { width: 100%; background: #000; border-radius: 8px; }
-  #channels { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; padding: 12px; max-width: 900px; margin: 0 auto; }
-  .ch { background: #1a1a1a; border-radius: 8px; overflow: hidden; cursor: pointer; }
-  .ch img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
-  .ch .t { padding: 8px; font-size: 0.85em; }
-  .ch.active { outline: 2px solid #2b8cff; }
+  body { font-family: 'Titillium Web', -apple-system, sans-serif; background: #040507; color: #fff; }
+  .bp-nav { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; background: #040507; }
+  .bp-nav .brand { font-weight: 700; font-size: 1.4rem; letter-spacing: 1px; }
+  .bp-nav .brand span { color: #d91e31; }
+  .live-tag { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 2px; font-weight: 700; }
+  .live-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff5b6e; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .live-section { background: linear-gradient(60deg, rgba(4,5,7,1) 43%, rgba(12,33,63,1) 100%); padding: 42px 20px 50px; min-height: calc(100vh - 68px); }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  .tt-head { display: inline-block; color: #fff; background-color: #d91e31; padding: 6px 14px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: .5px; margin: 0 0 30px; }
+  .reload { float: right; color: #fff; text-decoration: none; font-size: 13px; border: 1px solid rgba(255,255,255,.35); border-radius: 6px; padding: 7px 12px; cursor: pointer; background: none; }
+  .reload:hover { border-color: #fff; }
+  .channels { display: flex; gap: 34px; flex-wrap: wrap; }
+  .item-channel { text-align: center; display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #fff; width: 190px; padding: 14px 10px; border-radius: 10px; border: 2px solid transparent; cursor: pointer; background: none; }
+  .item-channel:hover { border-color: rgba(255,255,255,.25); }
+  .item-channel.active { border-color: #d91e31; background: rgba(217,17,49,.12); }
+  .item-channel img { margin-bottom: 15px; max-width: 160px; max-height: 92px; object-fit: contain; }
+  .item-channel .no-logo { width: 120px; height: 72px; margin-bottom: 15px; border-radius: 8px; background: #d91e31; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 26px; color: #fff; letter-spacing: 1px; }
+  .item-channel strong { font-weight: 700; text-transform: uppercase; font-size: 15px; line-height: 1.35; }
+  .item-channel .onair { margin-top: 8px; font-size: 11px; letter-spacing: 2px; color: #ff5b6e; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  #playerBlock { margin-top: 36px; display: none; }
+  #playerBlock.show { display: block; }
+  #playerWrap { background: #000; border-radius: 10px; overflow: hidden; max-width: 960px; }
+  #player { width: 100%; aspect-ratio: 16/9; display: block; }
+  #status { font-size: 13px; color: rgba(255,255,255,.65); margin: 10px 0 0; }
+  .empty, .err { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 26px; text-align: center; color: rgba(255,255,255,.75); max-width: 640px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>bsports</h1>
-  <div id="status">Conectando...</div>
-</header>
-<div id="player-wrap"><video id="player" controls playsinline></video></div>
-<div id="channels"></div>
+<nav class="bp-nav">
+  <div class="brand">b<span>sports</span></div>
+  <span class="live-tag"><span class="live-dot"></span>EN VIVO</span>
+</nav>
+<section class="live-section">
+  <div class="wrap">
+    <span class="tt-head">Transmisiones en vivo</span>
+    <button class="reload" onclick="load()">⟳ Recargar</button>
+    <div style="clear:both"></div>
+    <div class="channels" id="channels"></div>
+    <div id="playerBlock">
+      <div id="playerWrap"><video id="player" controls playsinline></video></div>
+      <div id="status"></div>
+    </div>
+  </div>
+</section>
 <script>
-const BACKENDS = [
-  "http://192.168.31.16:8901",
-  "https://jhon-pc.tailc7b9f2.ts.net"
-];
-let backend = null;
-const status = document.getElementById('status');
 const video = document.getElementById('player');
+const status = document.getElementById('status');
+const block = document.getElementById('playerBlock');
 let hls = null;
 
-async function findBackend() {
-  for (const b of BACKENDS) {
-    try {
-      const c = new AbortController();
-      const t = setTimeout(() => c.abort(), 3000);
-      const r = await fetch(b + "/index.php?api=videos", {signal: c.signal});
-      clearTimeout(t);
-      if (r.ok) { backend = b; return b; }
-    } catch(e) {}
-  }
-  return null;
+function initials(name) {
+  return name.split(/\s+/).map(w => w[0]).join('').substring(0, 3).toUpperCase();
 }
 
 async function load() {
-  const b = await findBackend();
-  if (!b) { status.textContent = "Sin conexión al servidor"; return; }
-  status.textContent = "Conectado: " + (b.includes("192.168") ? "red local" : "remoto");
-  const r = await fetch(b + "/index.php?api=videos");
-  const d = await r.json();
   const wrap = document.getElementById('channels');
-  wrap.innerHTML = "";
-  (d.live || []).forEach(v => {
-    const el = document.createElement('div');
-    el.className = 'ch';
-    el.innerHTML = `<img src="${v.thumbnail || v.logo || ''}" loading="lazy"><div class="t">${v.title}</div>`;
-    el.onclick = () => play(v, el);
-    wrap.appendChild(el);
-  });
-  if ((d.live || []).length === 0) status.textContent += " — sin transmisiones en vivo";
+  try {
+    // Lee el .otc generado por el Action (mismo origen, sin CORS)
+    const r = await fetch('./beisbol.otc?t=' + Date.now());
+    const d = await r.json();
+    wrap.innerHTML = '';
+    const chs = d.channels || [];
+    if (!chs.length) {
+      wrap.innerHTML = '<div class="empty">Sin transmisiones en vivo por ahora.</div>';
+      return;
+    }
+    chs.forEach(c => {
+      const el = document.createElement('button');
+      el.className = 'item-channel';
+      const logo = c.icon
+        ? `<img src="${c.icon}" loading="lazy" alt="">`
+        : `<span class="no-logo">${initials(c.name)}</span>`;
+      el.innerHTML = `${logo}<strong>${c.name}</strong><span class="onair"><span class="live-dot"></span>AL AIRE</span>`;
+      el.onclick = () => play(c, el);
+      wrap.appendChild(el);
+    });
+  } catch(e) {
+    wrap.innerHTML = '<div class="err">No se pudo cargar la lista. Intenta recargar.</div>';
+  }
 }
 
-function play(v, el) {
-  document.querySelectorAll('.ch').forEach(c => c.classList.remove('active'));
+function play(c, el) {
+  document.querySelectorAll('.item-channel').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
-  const url = backend + "/proxy.php?m3u8=" + encodeURIComponent(v.id);
+  block.classList.add('show');
+  status.textContent = 'Reproduciendo: ' + c.name;
+  block.scrollIntoView({behavior: 'smooth', block: 'nearest'});
   if (hls) hls.destroy();
   if (Hls.isSupported()) {
     hls = new Hls();
-    hls.loadSource(url);
+    hls.loadSource(c.url);
     hls.attachMedia(video);
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
+    video.src = c.url;
   }
   video.play().catch(()=>{});
 }
 load();
-setInterval(load, 60000);
 </script>
 </body>
 </html>
