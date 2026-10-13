@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>bsports</title>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Titillium Web', -apple-system, sans-serif; background: #040507; color: #fff; }
@@ -20,17 +19,17 @@
   .reload { float: right; color: #fff; text-decoration: none; font-size: 13px; border: 1px solid rgba(255,255,255,.35); border-radius: 6px; padding: 7px 12px; cursor: pointer; background: none; }
   .reload:hover { border-color: #fff; }
   .channels { display: flex; gap: 34px; flex-wrap: wrap; }
-  .item-channel { text-align: center; display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #fff; width: 190px; padding: 14px 10px; border-radius: 10px; border: 2px solid transparent; cursor: pointer; background: none; }
+  .item-channel { text-align: center; display: flex; flex-direction: column; align-items: center; color: #fff; width: 190px; padding: 14px 10px; border-radius: 10px; border: 2px solid transparent; cursor: pointer; background: none; }
   .item-channel:hover { border-color: rgba(255,255,255,.25); }
   .item-channel.active { border-color: #d91e31; background: rgba(217,17,49,.12); }
-  .item-channel img { margin-bottom: 15px; max-width: 160px; max-height: 92px; object-fit: contain; }
-  .item-channel .no-logo { width: 120px; height: 72px; margin-bottom: 15px; border-radius: 8px; background: #d91e31; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 26px; color: #fff; letter-spacing: 1px; }
+  .item-channel img { margin-bottom: 15px; max-width: 160px; max-height: 92px; object-fit: contain; border-radius: 6px; }
+  .item-channel .no-logo { width: 120px; height: 72px; margin-bottom: 15px; border-radius: 8px; background: #d91e31; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 26px; color: #fff; }
   .item-channel strong { font-weight: 700; text-transform: uppercase; font-size: 15px; line-height: 1.35; }
   .item-channel .onair { margin-top: 8px; font-size: 11px; letter-spacing: 2px; color: #ff5b6e; font-weight: 700; display: flex; align-items: center; gap: 6px; }
   #playerBlock { margin-top: 36px; display: none; }
   #playerBlock.show { display: block; }
-  #playerWrap { background: #000; border-radius: 10px; overflow: hidden; max-width: 960px; }
-  #player { width: 100%; aspect-ratio: 16/9; display: block; }
+  #playerWrap { background: #000; border-radius: 10px; overflow: hidden; max-width: 960px; aspect-ratio: 16/9; }
+  #playerWrap iframe { width: 100%; height: 100%; border: 0; }
   #status { font-size: 13px; color: rgba(255,255,255,.65); margin: 10px 0 0; }
   .empty, .err { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 26px; text-align: center; color: rgba(255,255,255,.75); max-width: 640px; }
 </style>
@@ -47,52 +46,31 @@
     <div style="clear:both"></div>
     <div class="channels" id="channels"></div>
     <div id="playerBlock">
-      <div id="playerWrap"><video id="player" controls playsinline></video></div>
+      <div id="playerWrap"><div id="dmplayer"></div></div>
       <div id="status"></div>
     </div>
   </div>
 </section>
+<script src="https://geo.dailymotion.com/libs/player/xaetl.js"></script>
 <script>
-// Solo IP local y funnel (simple, sin dependencias externas)
-const BACKENDS = [
-  "http://192.168.31.16:8901",
-  "https://jhon-pc.tailc7b9f2.ts.net"
-];
-let backend = null;
-const video = document.getElementById('player');
-const status = document.getElementById('status');
+// 100% independiente: API pública de Dailymotion + reproductor oficial embebido
+// No usa tu PC, no usa proxy, no usa funnel.
+const CHANNEL = 'bpenvivo';
+const wrap = document.getElementById('channels');
 const block = document.getElementById('playerBlock');
-let hls = null;
+const status = document.getElementById('status');
+let player = null;
 
 function initials(name) {
   return name.split(/\s+/).map(w => w[0]).join('').substring(0, 3).toUpperCase();
 }
 
-async function findBackend() {
-  for (const b of BACKENDS) {
-    try {
-      const c = new AbortController();
-      const t = setTimeout(() => c.abort(), 4000);
-      const r = await fetch(b + "/index.php?api=videos", {signal: c.signal});
-      clearTimeout(t);
-      if (r.ok) return b;
-    } catch(e) {}
-  }
-  return null;
-}
-
 async function load() {
-  const wrap = document.getElementById('channels');
-  wrap.innerHTML = '<div class="empty">Buscando servidor...</div>';
-  backend = await findBackend();
-  if (!backend) {
-    wrap.innerHTML = '<div class="err">No se pudo conectar (prueba en wifi o revisa que la PC esté encendida).</div>';
-    return;
-  }
+  wrap.innerHTML = '<div class="empty">Cargando...</div>';
   try {
-    const r = await fetch(backend + "/index.php?api=videos");
+    const r = await fetch(`https://api.dailymotion.com/user/${CHANNEL}/videos?fields=id,title,thumbnail_480_url,onair&limit=30`);
     const d = await r.json();
-    const live = d.live || [];
+    const live = (d.list || []).filter(v => v.onair);
     wrap.innerHTML = '';
     if (!live.length) {
       wrap.innerHTML = '<div class="empty">Sin transmisiones en vivo por ahora.</div>';
@@ -101,15 +79,15 @@ async function load() {
     live.forEach(v => {
       const el = document.createElement('button');
       el.className = 'item-channel';
-      const logo = (v.logo || v.thumbnail)
-        ? `<img src="${v.logo || v.thumbnail}" loading="lazy" alt="">`
+      const logo = v.thumbnail_480_url
+        ? `<img src="${v.thumbnail_480_url}" loading="lazy" alt="">`
         : `<span class="no-logo">${initials(v.title)}</span>`;
       el.innerHTML = `${logo}<strong>${v.title}</strong><span class="onair"><span class="live-dot"></span>AL AIRE</span>`;
       el.onclick = () => play(v, el);
       wrap.appendChild(el);
     });
   } catch(e) {
-    wrap.innerHTML = '<div class="err">Error cargando la lista.</div>';
+    wrap.innerHTML = '<div class="err">Error cargando. Revisa tu conexión.</div>';
   }
 }
 
@@ -117,18 +95,14 @@ function play(v, el) {
   document.querySelectorAll('.item-channel').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
   block.classList.add('show');
-  status.textContent = 'Reproduciendo: ' + v.title + ' (' + (backend.includes('192.168') ? 'local' : 'funnel') + ')';
+  status.textContent = 'Reproduciendo: ' + v.title;
   block.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-  const url = backend + "/proxy.php?m3u8=" + encodeURIComponent(v.id);
-  if (hls) hls.destroy();
-  if (Hls.isSupported()) {
-    hls = new Hls();
-    hls.loadSource(url);
-    hls.attachMedia(video);
-  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
-  }
-  video.play().catch(()=>{});
+  // Reproductor oficial de Dailymotion (maneja su propia sesión)
+  document.getElementById('dmplayer').innerHTML = '';
+  player = dailymotion.createPlayer('dmplayer', {
+    video: v.id,
+    params: { autoplay: true }
+  });
 }
 load();
 </script>
